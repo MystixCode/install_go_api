@@ -4,7 +4,6 @@ Script to install go-rest-api on a debian10 vm with firewall, git, golang, maria
 unstable dev version!
 
 ### TODO
-- postgres install doesnt work atm
-- GOPATH doesnt work ?!
+- GOPATH doesnt work
 - hardcoded values change to vars
 - testing, fixing
