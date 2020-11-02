@@ -22,7 +22,7 @@ if [ "$EUID" -ne 0 ] ;then
     echo "${green}Enter root pw$normal"
     su - root bash -c "apt -qq -y install sudo"
     su - root bash -c "/sbin/adduser $normaluser sudo"
-    echo "sudo installed pls logout and login and restart script -.-"
+    echo "${orange}sudo installed pls logout and login and restart script -.-$normal"
     exit 1
   fi
 
@@ -206,12 +206,10 @@ if [ "$EUID" -ne 0 ] ;then
 
     sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048
 
+    #Comment out SSL related directives in the configuration:
+    sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/api.mystixcode.tk.conf
     sudo nginx -t
     sudo systemctl restart nginx
-
-    #Comment out SSL related directives in the configuration:
-    sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/api.mystixcode.tk.conf
-    sudo nginx -t && sudo systemctl reload nginx
 
     #install certbot and create cert
     sudo apt install -qq -y certbot
@@ -220,7 +218,7 @@ if [ "$EUID" -ne 0 ] ;then
     sudo certbot certonly --webroot -d api.mystixcode.tk --email info@api.mystixcode.tk -w /var/www/_letsencrypt -n --agree-tos --force-renewal
 
     #Uncomment SSL related directives in the configuration:
-    sed -i -r 's/#?;#//g' /etc/nginx/sites-available/api.mystixcode.tk.conf
+    sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/api.mystixcode.tk.conf
     sudo nginx -t && sudo systemctl reload nginx
 
     # Configure Certbot to reload NGINX when it successfully renews certificates:
@@ -250,7 +248,7 @@ if [ "$EUID" -ne 0 ] ;then
     echo 'export GOPATH=$HOME/go' >> '.profile'
     echo 'export PATH=$PATH:$GOROOT/bin:$GOPATH/bin' >> '.profile'
     source ~/.profile
-    echo "Go installed pls logout and login and restart script and continue with db"
+    echo "${orange}Go installed pls logout and login and restart script and continue with db$normal"
     exit 1
   fi
 
@@ -264,6 +262,7 @@ if [ "$EUID" -ne 0 ] ;then
     sudo apt -qq -y install postgresql-client
     sudo su - postgres bash -c "psql -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
     sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
+    sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$normaluser\" OWNER $normaluser;'"
     #su - postgres bash -c "psql -U postgres -c \"CREATE USER root WITH PASSWORD 'testtest';\""
     #su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"root\" OWNER root;'"
   fi
@@ -277,20 +276,18 @@ if [ "$EUID" -ne 0 ] ;then
     read -s -p "${green}Enter root password: $normal" rootpw
     echo
     sudo apt -qq -y install mariadb-server mariadb-client
-    echo "${lightaqua}Choose:$normal"
+    echo "${lightaqua}Choose:"
     echo "Enter current password for root (enter for none): Just press the Enter
       Set root password? [Y/n]: Y
-      New password: Enter password
-      Re-enter new password: Repeat password
-      Remove anonymous users? [Y/n]: Y
-      Disallow root login remotely? [Y/n]: Y
-      Remove test database and access to it? [Y/n]:  Y
-      Reload privilege tables now? [Y/n]:  Y"
+      Remove [Y/n]: Y
+      Disallow [Y/n]: Y
+      Remove [Y/n]:  Y
+      Reload [Y/n]:  Y$normal"
     sudo mysql_secure_installation
     sudo mysql --database="mysql" --execute="UPDATE user SET plugin='' WHERE user ='root';FLUSH PRIVILEGES;"
     sudo systemctl restart mariadb
     sudo mysql --user="root" --password="$rootpw" --execute="GRANT ALL PRIVILEGES ON *.* TO '$normaluser'@'localhost' IDENTIFIED BY '$normaluserpw';"
-    sudo mysql --user="root" --password="$rootpw" --execute='CREATE DATABASE IF NOT EXISTS `go-rest-api` CHARACTER SET utf8 COLLATE utf8_general_ci'
+    sudo mysql --user="root" --password="$rootpw" --execute='CREATE DATABASE IF NOT EXISTS `go_rest_api` CHARACTER SET utf8 COLLATE utf8_general_ci'
   fi
 
   ## Install and configure go-rest-api #########################################
@@ -305,6 +302,7 @@ if [ "$EUID" -ne 0 ] ;then
     #make api build in /var/www/go-rest-api or just build it there via golang editor
     go build -o /var/www/api.mystixcode.tk/go-rest-api /home/master/go/src/go-rest-api
     #todo insert default values into db
+    #todo no hardcoded values only vars
     #change config.json values
   fi
 
