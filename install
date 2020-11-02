@@ -1,10 +1,5 @@
 #!/bin/bash
 
-# README
-# create virtual debian server with only standard systemtools and SSH server selected
-# Connect from terminal via ssh switch to root via "su -"
-# make script executable and execute script ./install
-
 bold=`echo -en "\e[1m"`
 underline=`echo -en "\e[4m"`
 normal=`echo -en "\e[0m"`
@@ -21,11 +16,15 @@ if [ "$EUID" -ne 0 ] ;then
 
   ## Install sudo ##############################################################
   normaluser=$USER
-  read -s -p "${green}Enter password for normaluser $normaluser: $normal" normaluserpw
-  echo
-  echo "${green}Enter root pw$normal"
-  su - root bash -c "apt -qq -y install sudo"
-  sudo usermod -a -G sudo $normaluser
+
+  pkgs='sudo'
+  if ! dpkg -s $pkgs >/dev/null 2>&1; then
+    echo "${green}Enter root pw$normal"
+    su - root bash -c "apt -qq -y install sudo"
+    su - root bash -c "/sbin/adduser $normaluser sudo"
+    echo "sudo installed pls logout and login and restart script -.-"
+    exit 1
+  fi
 
   ## Info / prerequisites text #################################################
   echo "${orange}Prerequisites:$normal"
@@ -33,7 +32,7 @@ if [ "$EUID" -ne 0 ] ;then
   echo "- You need a domain name."
   echo "  You can get one for free on: https://www.freenom.com/"
   echo "- You need DNS records type A:"
-  echo "  go-rest-api -> WAN IP"
+  echo "  api -> WAN IP"
   echo "  or even better caa records for better security"
   echo "- Port forwarding HTTP and HTTPS on router to server IP"
   echo
@@ -53,8 +52,180 @@ if [ "$EUID" -ne 0 ] ;then
     sudo apt -qq -y install ufw
     sudo ufw allow SSH
     sudo ufw allow "WWW Full"
-    sudo echo "y" | ufw enable
+    sudo ufw enable
     sudo ufw status
+  fi
+
+  ## nginx #####################################################################
+  echo -n "${green}Install and configure nginx (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    sudo apt -qq -y install nginx
+    sudo mkdir -p /var/www/api.mystixcode.tk/public
+    sudo chown -R $USER:$USER /var/www/api.mystixcode.tk/public
+    sudo chmod -R 755 /var/www/api.mystixcode.tk
+
+    echo "
+    user                 www-data;
+    pid                  /run/nginx.pid;
+    worker_processes     auto;
+    worker_rlimit_nofile 65535;
+    events {
+        multi_accept       on;
+        worker_connections 65535;
+    }
+    http {
+        charset              utf-8;
+        sendfile             on;
+        tcp_nopush           on;
+        tcp_nodelay          on;
+        server_tokens        off;
+        log_not_found        off;
+        types_hash_max_size  2048;
+        client_max_body_size 16M;
+        # MIME
+        include              mime.types;
+        default_type         application/octet-stream;
+        # Logging
+        access_log           /var/log/nginx/access.log;
+        error_log            /var/log/nginx/error.log warn;
+        # SSL
+        ssl_session_timeout  1d;
+        ssl_session_cache    shared:SSL:10m;
+        ssl_session_tickets  off;
+        # Diffie-Hellman parameter for DHE ciphersuites
+        ssl_dhparam          /etc/nginx/dhparam.pem;
+        # Mozilla Intermediate configuration
+        ssl_protocols        TLSv1.2 TLSv1.3;
+        ssl_ciphers          ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+        # OCSP Stapling
+        ssl_stapling         on;
+        ssl_stapling_verify  on;
+        resolver             1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 208.67.222.222 208.67.220.220 valid=60s;
+        resolver_timeout     2s;
+        # Load configs
+        include              /etc/nginx/conf.d/*.conf;
+        include              /etc/nginx/sites-enabled/*;
+    }
+    " | sudo tee /etc/nginx/nginx.conf
+
+    echo "
+    server {
+        listen                  443 ssl http2;
+        listen                  [::]:443 ssl http2;
+        server_name             api.mystixcode.tk;
+        # SSL
+        ssl_certificate         /etc/letsencrypt/live/api.mystixcode.tk/fullchain.pem;
+        ssl_certificate_key     /etc/letsencrypt/live/api.mystixcode.tk/privkey.pem;
+        ssl_trusted_certificate /etc/letsencrypt/live/api.mystixcode.tk/chain.pem;
+        # security
+        include                 security.conf;
+        # logging
+        access_log              /var/log/nginx/api.mystixcode.tk.access.log;
+        error_log               /var/log/nginx/api.mystixcode.tk.error.log warn;
+        # reverse proxy
+        location / {
+            proxy_pass http://127.0.0.1:8080;
+            include    proxy.conf;
+        }
+        # additional config
+        include general.conf;
+    }
+    # HTTP redirect
+    server {
+        listen      80;
+        listen      [::]:80;
+        server_name api.mystixcode.tk;
+        include     letsencrypt.conf;
+        location / {
+            return 301 https://api.mystixcode.tk\$request_uri;
+        }
+    }
+    " | sudo tee /etc/nginx/sites-available/api.mystixcode.tk.conf
+
+    echo "
+    # ACME-challenge
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/_letsencrypt;
+    }
+    " | sudo tee /etc/nginx/letsencrypt.conf
+
+    echo "
+    # security headers
+    add_header X-Frame-Options           \"SAMEORIGIN\" always;
+    add_header X-XSS-Protection          \"1; mode=block\" always;
+    add_header X-Content-Type-Options    \"nosniff\" always;
+    add_header Referrer-Policy           \"no-referrer-when-downgrade\" always;
+    add_header Content-Security-Policy   \"default-src 'self' http: https: data: blob: 'unsafe-inline'\" always;
+    add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\" always;
+    # . files
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+    " | sudo tee /etc/nginx/security.conf
+
+    echo "
+    # favicon.ico
+    location = /favicon.ico {
+        log_not_found off;
+        access_log    off;
+    }
+    # robots.txt
+    location = /robots.txt {
+        log_not_found off;
+        access_log    off;
+    }
+    # gzip
+    gzip            on;
+    gzip_vary       on;
+    gzip_proxied    any;
+    gzip_comp_level 6;
+    gzip_types      text/plain text/css text/xml application/json application/javascript application/rss+xml application/atom+xml image/svg+xml;
+    " | sudo tee /etc/nginx/general.conf
+
+    echo "
+    proxy_http_version                 1.1;
+    proxy_cache_bypass                 \$http_upgrade;
+    # Proxy headers
+    proxy_set_header Upgrade           \$http_upgrade;
+    proxy_set_header Connection        "upgrade";
+    proxy_set_header Host              \$host;
+    proxy_set_header X-Real-IP         \$remote_addr;
+    proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header X-Forwarded-Host  \$host;
+    proxy_set_header X-Forwarded-Port  \$server_port;
+    # Proxy timeouts
+    proxy_connect_timeout              60s;
+    proxy_send_timeout                 60s;
+    proxy_read_timeout                 60s;
+    " | sudo tee /etc/nginx/proxy.conf
+
+    sudo ln -s /etc/nginx/sites-available/api.mystixcode.tk.conf /etc/nginx/sites-enabled/
+
+    sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048
+
+    sudo nginx -t
+    sudo systemctl restart nginx
+
+    #Comment out SSL related directives in the configuration:
+    sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/api.mystixcode.tk.conf
+    sudo nginx -t && sudo systemctl reload nginx
+
+    #install certbot and create cert
+    sudo apt install -qq -y certbot
+    sudo mkdir -p /var/www/_letsencrypt
+    sudo chown www-data /var/www/_letsencrypt
+    sudo certbot certonly --webroot -d api.mystixcode.tk --email info@api.mystixcode.tk -w /var/www/_letsencrypt -n --agree-tos --force-renewal
+
+    #Uncomment SSL related directives in the configuration:
+    sed -i -r 's/#?;#//g' /etc/nginx/sites-available/api.mystixcode.tk.conf
+    sudo nginx -t && sudo systemctl reload nginx
+
+    # Configure Certbot to reload NGINX when it successfully renews certificates:
+    echo -e '#!/bin/bash\nnginx -t && systemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/post/nginx-reload.sh
+    sudo chmod a+x /etc/letsencrypt/renewal-hooks/post/nginx-reload.sh
+
   fi
 
   ## install and configure GIT #################################################
@@ -72,22 +243,26 @@ if [ "$EUID" -ne 0 ] ;then
   echo -n "${green}Install and configure golang 1.15 (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
-    sudo wget -c https://dl.google.com/go/go1.15.3.linux-amd64.tar.gz -O - | tar -xz -C /usr/local
-    #sudo chown -R root:root /usr/local/go # eventuell überflüssig wenn script als root
+    sudo wget -c https://dl.google.com/go/go1.15.3.linux-amd64.tar.gz -O - | sudo tar -xz -C /usr/local
+    sudo chown -R root:root /usr/local/go # eventuell überflüssig wenn script als root
     echo 'export GOROOT=/usr/local/go' >> '.profile'
     echo 'export GOPATH=$HOME/go' >> '.profile'
     echo 'export PATH=$PATH:$GOROOT/bin:$GOPATH/bin' >> '.profile'
-    source '.profile'
+    source ~/.profile
+    echo "Go installed pls logout and login and restart script and continue with db"
+    exit 1
   fi
 
   ## install postgres ##########################################################
   echo -n "${green}Install and configure postgres (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
+    read -s -p "${green}Enter password for $normaluser: $normal" normaluserpw
+    echo
     sudo apt -qq -y install postgresql-11
     sudo apt -qq -y install postgresql-client
-    su - postgres bash -c "psql -U postgres -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
-    su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"go-rest-api\" OWNER $normaluser;'"
+    su - postgres bash -c "psql -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
+    su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
     #su - postgres bash -c "psql -U postgres -c \"CREATE USER root WITH PASSWORD 'testtest';\""
     #su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"root\" OWNER root;'"
   fi
@@ -96,6 +271,8 @@ if [ "$EUID" -ne 0 ] ;then
   echo -n "${green}Install and configure mariadb (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
+    read -s -p "${green}Enter password for $normaluser: $normal" normaluserpw
+    echo
     read -s -p "${green}Enter root password: $normal" rootpw
     echo
     sudo apt -qq -y install mariadb-server mariadb-client
@@ -122,14 +299,12 @@ if [ "$EUID" -ne 0 ] ;then
     mkdir -p $HOME/go/src/go-rest-api #mkdir if not exists
     cd $HOME/go/src/go-rest-api
     git clone https://github.com/gabrielix29/go-rest-api $HOME/go/src/go-rest-api
-    sudo mkdir -p /var/www/go-rest-api
-    sudo chown -R $normaluser /var/www/go-rest-api
+    sudo mkdir -p /var/www/api.mystixcode.tk
+    sudo chown -R $normaluser /var/www/api.mystixcode.tk
     #make api build in /var/www/go-rest-api or just build it there via golang editor
-    go build -o /var/www/go-rest-api/go-rest-api go-rest-api
-    #todo make api serve on go-rest-api.mystixcode.tk
+    go build -o /var/www/api.mystixcode.tk/go-rest-api /home/master/go/src/go-rest-api
     #todo insert default values into db
     #change config.json values
-    #todo ssl config via settings for mystixcode.tk
   fi
 
 else
