@@ -52,6 +52,7 @@ if [ "$EUID" -ne 0 ] ;then
     sudo apt -qq -y install ufw
     sudo ufw allow SSH
     sudo ufw allow "WWW Full"
+    sudo ufw enable
     echo "y" | sudo ufw enable
     sudo ufw status
   fi
@@ -261,8 +262,8 @@ if [ "$EUID" -ne 0 ] ;then
     echo
     sudo apt -qq -y install postgresql-11
     sudo apt -qq -y install postgresql-client
-    su - postgres bash -c "psql -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
-    su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
+    sudo su - postgres bash -c "psql -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
+    sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
     #su - postgres bash -c "psql -U postgres -c \"CREATE USER root WITH PASSWORD 'testtest';\""
     #su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"root\" OWNER root;'"
   fi
