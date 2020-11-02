@@ -2,7 +2,7 @@
 
 # README
 # create virtual debian server with only standard systemtools and SSH server selected
-# Connect from terminal via ssh switch to root via "su -" !IMPORTANT
+# Connect from terminal via ssh switch to root via "su -"
 # make script executable and execute script ./install
 
 bold=`echo -en "\e[1m"`
@@ -16,112 +16,122 @@ purple=`echo -en "\e[35m"`
 clear
 echo "${bold}${underline}${purple}Debian 10 - go-rest-api installation and configuration script$normal"
 
-## root check ##################################################################
-if [ "$EUID" -ne 0 ]
-  then echo "${red}Please run as root. Use following command: ${lightaqua}su -$normal"
-  exit
-fi
+## if not root check ###########################################################
+if [ "$EUID" -ne 0 ] ;then
 
-## Info / prerequisites text ###################################################
-echo "${orange}Prerequisites:$normal"
-echo "- A Debian 10 server with SSH"
-echo "- You need a domain name."
-echo "  You can get one for free on: https://www.freenom.com/"
-echo "- You need DNS records type A:"
-echo "  go-rest-api -> WAN IP"
-echo "  or even better caa records for better security"
-echo "- Port forwarding HTTP and HTTPS on router to server IP"
-echo
-
-## update system ###############################################################
-echo -n "${green}Update system (y/n)? $normal"
-read answer
-if [ "$answer" != "${answer#[Yy]}" ] ;then
-  apt -qq update
-  apt -qq upgrade
-fi
-
-## firewall ####################################################################
-echo -n "${green}Install and configure firewall (y/n)? $normal"
-read answer
-if [ "$answer" != "${answer#[Yy]}" ] ;then
-  apt -qq install ufw
-  ufw allow SSH
-  ufw allow "WWW Full"
-  echo "y" | ufw enable
-  ufw status
-fi
-
-## install and configure GIT ###################################################
-echo -n "${green}Install and configure git (y/n)? $normal"
-read answer
-if [ "$answer" != "${answer#[Yy]}" ] ;then
-  read -p "${green}Enter your git username: $normal" gitusername
-  read -p "${green}Enter your git email: $normal" gitemail
-  apt -qq install git
-  git config --global user.name $gitusername
-  git config --global user.email $gitemail
-fi
-
-## TODO install golang 1.15 ? ##################################################
-echo -n "${green}Install and configure golang 1.15 (y/n)? $normal"
-read answer
-if [ "$answer" != "${answer#[Yy]}" ] ;then
-  wget -c https://dl.google.com/go/go1.15.3.linux-amd64.tar.gz -O - | tar -xz -C /usr/local
-  chown -R root:root /usr/local/go # eventuell überflüssig wenn script als root
-  echo 'export PATH=$PATH:/usr/local/go/bin' >> '/root/.profile' #???? as root correct dia profile var??
-fi
-
-## todo install postgres #######################################################
-#echo -n "${green}Install and configure postgres (y/n)? $normal"
-#read answer
-#if [ "$answer" != "${answer#[Yy]}" ] ;then
-#  apt -qq install postgresql-11
-#  apt -qq install postgresql-client
-#  adduser testuser    #unix user
-#  su - postgres
-#  createuser --pwprompt testuser #db user
-#  createdb -O testuser go-rest-api
-#  logout
-#fi
-
-## install mariadb #############################################################
-echo -n "${green}Install and configure mariadb (y/n)? $normal"
-read answer
-if [ "$answer" != "${answer#[Yy]}" ] ;then
-  read -p "${green}Enter your new dbuser: $normal" dbuser
-  read -s -p "${green}Enter new dbuser password: $normal" dbuserpw
+  ## Install sudo ##############################################################
+  normaluser=$USER
+  read -s -p "${green}Enter password for normaluser $normaluser: $normal" normaluserpw
   echo
-  read -s -p "${green}Enter root password: $normal" rootpw
-  echo
-  useradd $dbuser -p $dbuserpw
-  apt -qq -y install mariadb-server mariadb-client
-  echo "${lightaqua}Choose:$normal"
-  echo "Enter current password for root (enter for none): Just press the Enter
-    Set root password? [Y/n]: Y
-    New password: Enter password
-    Re-enter new password: Repeat password
-    Remove anonymous users? [Y/n]: Y
-    Disallow root login remotely? [Y/n]: Y
-    Remove test database and access to it? [Y/n]:  Y
-    Reload privilege tables now? [Y/n]:  Y"
-  mysql_secure_installation
-  mysql --database="mysql" --execute="UPDATE user SET plugin='' WHERE user ='root';FLUSH PRIVILEGES;"
-  systemctl restart mariadb
-  mysql --user="root" --password="$rootpw" --execute="GRANT ALL PRIVILEGES ON *.* TO '$dbuser'@'localhost' IDENTIFIED BY '$dbuserpw';"
-  mysql --user="root" --password="$rootpw" --execute='CREATE DATABASE IF NOT EXISTS `go-rest-api` CHARACTER SET utf8 COLLATE utf8_general_ci'
-fi
+  echo "${green}Enter root pw$normal"
+  su - root bash -c "apt -qq -y install sudo"
+  sudo usermod -a -G sudo $normaluser
 
-## Install and configure go-rest-api ###########################################
-echo -n "${green}Install and configure go-rest-api (y/n)? $normal"
-read answer
-if [ "$answer" != "${answer#[Yy]}" ] ;then
-  mkdir -p /usr/local/go/src/go-rest-api #mkdir if not exists
-  cd /usr/local/go/src/go-rest-api/
-  git clone https://github.com/gabrielix29/go-rest-api /usr/local/go/src/go-rest-api
-  #make api build in /var/www/go-rest-api or just build it there via golang editor
-  go build -o /var/www/go-rest-api/go-rest-api go-rest-api
-  #todo make api serve on go-rest-api.mystixcode.tk via settings
-  #todo insert default values into db
-  #todo ssl config via settings for mystixcode.tk
+  ## Info / prerequisites text #################################################
+  echo "${orange}Prerequisites:$normal"
+  echo "- A Debian 10 server with SSH"
+  echo "- You need a domain name."
+  echo "  You can get one for free on: https://www.freenom.com/"
+  echo "- You need DNS records type A:"
+  echo "  go-rest-api -> WAN IP"
+  echo "  or even better caa records for better security"
+  echo "- Port forwarding HTTP and HTTPS on router to server IP"
+  echo
+
+  ## update system #############################################################
+  echo -n "${green}Update system (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    sudo apt -qq -y update
+    sudo apt -qq -y upgrade
+  fi
+
+  ## firewall ##################################################################
+  echo -n "${green}Install and configure firewall (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    sudo apt -qq -y install ufw
+    sudo ufw allow SSH
+    sudo ufw allow "WWW Full"
+    sudo echo "y" | ufw enable
+    sudo ufw status
+  fi
+
+  ## install and configure GIT #################################################
+  echo -n "${green}Install and configure git (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    read -p "${green}Enter your git username: $normal" gitusername
+    read -p "${green}Enter your git email: $normal" gitemail
+    sudo apt -qq -y install git
+    git config --global user.name $gitusername
+    git config --global user.email $gitemail
+  fi
+
+  ## install golang 1.15 #######################################################
+  echo -n "${green}Install and configure golang 1.15 (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    sudo wget -c https://dl.google.com/go/go1.15.3.linux-amd64.tar.gz -O - | tar -xz -C /usr/local
+    #sudo chown -R root:root /usr/local/go # eventuell überflüssig wenn script als root
+    echo 'export GOROOT=/usr/local/go' >> '.profile'
+    echo 'export GOPATH=$HOME/go' >> '.profile'
+    echo 'export PATH=$PATH:$GOROOT/bin:$GOPATH/bin' >> '.profile'
+    source '.profile'
+  fi
+
+  ## install postgres ##########################################################
+  echo -n "${green}Install and configure postgres (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    sudo apt -qq -y install postgresql-11
+    sudo apt -qq -y install postgresql-client
+    su - postgres bash -c "psql -U postgres -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
+    su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"go-rest-api\" OWNER $normaluser;'"
+    #su - postgres bash -c "psql -U postgres -c \"CREATE USER root WITH PASSWORD 'testtest';\""
+    #su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"root\" OWNER root;'"
+  fi
+
+  ## install mariadb ###########################################################
+  echo -n "${green}Install and configure mariadb (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    read -s -p "${green}Enter root password: $normal" rootpw
+    echo
+    sudo apt -qq -y install mariadb-server mariadb-client
+    echo "${lightaqua}Choose:$normal"
+    echo "Enter current password for root (enter for none): Just press the Enter
+      Set root password? [Y/n]: Y
+      New password: Enter password
+      Re-enter new password: Repeat password
+      Remove anonymous users? [Y/n]: Y
+      Disallow root login remotely? [Y/n]: Y
+      Remove test database and access to it? [Y/n]:  Y
+      Reload privilege tables now? [Y/n]:  Y"
+    sudo mysql_secure_installation
+    sudo mysql --database="mysql" --execute="UPDATE user SET plugin='' WHERE user ='root';FLUSH PRIVILEGES;"
+    sudo systemctl restart mariadb
+    sudo mysql --user="root" --password="$rootpw" --execute="GRANT ALL PRIVILEGES ON *.* TO '$normaluser'@'localhost' IDENTIFIED BY '$normaluserpw';"
+    sudo mysql --user="root" --password="$rootpw" --execute='CREATE DATABASE IF NOT EXISTS `go-rest-api` CHARACTER SET utf8 COLLATE utf8_general_ci'
+  fi
+
+  ## Install and configure go-rest-api #########################################
+  echo -n "${green}Install and configure go-rest-api (y/n)? $normal"
+  read answer
+  if [ "$answer" != "${answer#[Yy]}" ] ;then
+    mkdir -p $HOME/go/src/go-rest-api #mkdir if not exists
+    cd $HOME/go/src/go-rest-api
+    git clone https://github.com/gabrielix29/go-rest-api $HOME/go/src/go-rest-api
+    sudo mkdir -p /var/www/go-rest-api
+    sudo chown -R $normaluser /var/www/go-rest-api
+    #make api build in /var/www/go-rest-api or just build it there via golang editor
+    go build -o /var/www/go-rest-api/go-rest-api go-rest-api
+    #todo make api serve on go-rest-api.mystixcode.tk
+    #todo insert default values into db
+    #change config.json values
+    #todo ssl config via settings for mystixcode.tk
+  fi
+
+else
+  echo "${red}Please DONT run script as root. Use normal user!$normal"
 fi
