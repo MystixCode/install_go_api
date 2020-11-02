@@ -52,7 +52,7 @@ if [ "$EUID" -ne 0 ] ;then
     sudo apt -qq -y install ufw
     sudo ufw allow SSH
     sudo ufw allow "WWW Full"
-    sudo ufw enable
+    echo "y" | sudo ufw enable
     sudo ufw status
   fi
 
