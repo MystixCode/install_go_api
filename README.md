@@ -6,4 +6,5 @@ unstable dev version!
 ### TODO
 - GOPATH doesnt work
 - hardcoded values change to vars
+- create mutiple domains/subdomains
 - testing, fixing
