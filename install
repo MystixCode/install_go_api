@@ -29,8 +29,7 @@ if [ "$EUID" -ne 0 ] ;then
   ## Info / prerequisites text #################################################
   echo "${orange}Prerequisites:$normal"
   echo "- A Debian 10 server with SSH"
-  echo "- You need a domain name."
-  echo "  You can get one for free on: https://www.freenom.com/"
+  echo "- You need a domain name. https://www.freenom.com/"
   echo "- You need DNS records type A:"
   echo "  api -> WAN IP"
   echo "  or even better caa records for better security"
@@ -61,10 +60,13 @@ if [ "$EUID" -ne 0 ] ;then
   echo -n "${green}Install and configure nginx (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
+
+    read -p "${green}servername(api.example.com): $normal" servername
+
     sudo apt -qq -y install nginx
-    sudo mkdir -p /var/www/api.mystixcode.tk/public
-    sudo chown -R $USER:$USER /var/www/api.mystixcode.tk/public
-    sudo chmod -R 755 /var/www/api.mystixcode.tk
+    sudo mkdir -p /var/www/$servername/public
+    sudo chown -R $USER:$USER /var/www/$servername/public
+    sudo chmod -R 755 /var/www/$servername
 
     echo "
     user                 www-data;
@@ -114,16 +116,16 @@ if [ "$EUID" -ne 0 ] ;then
     server {
         listen                  443 ssl http2;
         listen                  [::]:443 ssl http2;
-        server_name             api.mystixcode.tk;
+        server_name             $servername;
         # SSL
-        ssl_certificate         /etc/letsencrypt/live/api.mystixcode.tk/fullchain.pem;
-        ssl_certificate_key     /etc/letsencrypt/live/api.mystixcode.tk/privkey.pem;
-        ssl_trusted_certificate /etc/letsencrypt/live/api.mystixcode.tk/chain.pem;
+        ssl_certificate         /etc/letsencrypt/live/$servername/fullchain.pem;
+        ssl_certificate_key     /etc/letsencrypt/live/$servername/privkey.pem;
+        ssl_trusted_certificate /etc/letsencrypt/live/$servername/chain.pem;
         # security
         include                 security.conf;
         # logging
-        access_log              /var/log/nginx/api.mystixcode.tk.access.log;
-        error_log               /var/log/nginx/api.mystixcode.tk.error.log warn;
+        access_log              /var/log/nginx/$servername.access.log;
+        error_log               /var/log/nginx/$servername.error.log warn;
         # reverse proxy
         location / {
             proxy_pass http://127.0.0.1:8080;
@@ -136,13 +138,13 @@ if [ "$EUID" -ne 0 ] ;then
     server {
         listen      80;
         listen      [::]:80;
-        server_name api.mystixcode.tk;
+        server_name $servername;
         include     letsencrypt.conf;
         location / {
-            return 301 https://api.mystixcode.tk\$request_uri;
+            return 301 https://$servername\$request_uri;
         }
     }
-    " | sudo tee /etc/nginx/sites-available/api.mystixcode.tk.conf
+    " | sudo tee /etc/nginx/sites-available/$servername.conf
 
     echo "
     # ACME-challenge
@@ -202,29 +204,23 @@ if [ "$EUID" -ne 0 ] ;then
     proxy_read_timeout                 60s;
     " | sudo tee /etc/nginx/proxy.conf
 
-    sudo ln -s /etc/nginx/sites-available/api.mystixcode.tk.conf /etc/nginx/sites-enabled/
-
+    sudo ln -s /etc/nginx/sites-available/$servername.conf /etc/nginx/sites-enabled/
     sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048
-
     #Comment out SSL related directives in the configuration:
-    sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/api.mystixcode.tk.conf
+    sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/$servername.conf
     sudo nginx -t
     sudo systemctl restart nginx
-
     #install certbot and create cert
     sudo apt install -qq -y certbot
     sudo mkdir -p /var/www/_letsencrypt
     sudo chown www-data /var/www/_letsencrypt
-    sudo certbot certonly --webroot -d api.mystixcode.tk --email info@api.mystixcode.tk -w /var/www/_letsencrypt -n --agree-tos --force-renewal
-
+    sudo certbot certonly --webroot -d $servername --email info@$servername -w /var/www/_letsencrypt -n --agree-tos --force-renewal
     #Uncomment SSL related directives in the configuration:
-    sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/api.mystixcode.tk.conf
+    sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/$servername.conf
     sudo nginx -t && sudo systemctl reload nginx
-
     # Configure Certbot to reload NGINX when it successfully renews certificates:
     echo -e '#!/bin/bash\nnginx -t && systemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/post/nginx-reload.sh
     sudo chmod a+x /etc/letsencrypt/renewal-hooks/post/nginx-reload.sh
-
   fi
 
   ## install and configure GIT #################################################
@@ -263,8 +259,6 @@ if [ "$EUID" -ne 0 ] ;then
     sudo su - postgres bash -c "psql -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
     sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
     sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$normaluser\" OWNER $normaluser;'"
-    #su - postgres bash -c "psql -U postgres -c \"CREATE USER root WITH PASSWORD 'testtest';\""
-    #su - postgres bash -c "psql -U postgres -c 'CREATE DATABASE \"root\" OWNER root;'"
   fi
 
   ## install mariadb ###########################################################
@@ -294,18 +288,21 @@ if [ "$EUID" -ne 0 ] ;then
   echo -n "${green}Install and configure go-rest-api (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
+    read -p "${green}servername for go-rest-api (api.example.com): $normal" servername
     mkdir -p $HOME/go/src/go-rest-api #mkdir if not exists
     cd $HOME/go/src/go-rest-api
     git clone https://github.com/gabrielix29/go-rest-api $HOME/go/src/go-rest-api
-    sudo mkdir -p /var/www/api.mystixcode.tk
-    sudo chown -R $normaluser /var/www/api.mystixcode.tk
+    sudo mkdir -p /var/www/$servername
+    sudo chown -R $normaluser /var/www/$servername
     #make api build in /var/www/go-rest-api or just build it there via golang editor
-    go build -o /var/www/api.mystixcode.tk/go-rest-api /home/master/go/src/go-rest-api
+    go build -o /var/www/$servername/go-rest-api /home/master/go/src/go-rest-api
     #todo insert default values into db
+    #TODO input choose db mysql/postgres
+    #then create db here (remove above) and tables and insert default values via mysql and psql
     #todo no hardcoded values only vars
     #change config.json values
   fi
-
+  echo "${green}Done...$normal"
 else
   echo "${red}Please DONT run script as root. Use normal user!$normal"
 fi
