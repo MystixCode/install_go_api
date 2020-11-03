@@ -7,4 +7,6 @@ unstable dev version!
 - GOPATH doesnt work
 - hardcoded values change to vars
 - create mutiple domains/subdomains
+- change api config.json
+- insert default vales/structure into db
 - testing, fixing
