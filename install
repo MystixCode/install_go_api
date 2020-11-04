@@ -48,13 +48,51 @@ if [ "$EUID" -ne 0 ] ;then
   echo -n "${green}Install and configure nginx (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
-
-    read -p "${green}servername(api.example.com): $normal" servername
-
     sudo apt -qq -y install nginx
-    sudo mkdir -p /var/www/$servername/public
-    sudo chown -R $USER:$USER /var/www/$servername/public
-    sudo chmod -R 755 /var/www/$servername
+
+    read -p "${green}Enter webroot directory (/var/www): $normal" webroot
+    read -p "${green}Please enter domains separated by space. (example.com api.example.com blog.example.com): $normal" domains
+
+    for domain in $domains
+    do
+      mkdir -p $webroot/${domain}/public
+      sudo chown -R $USER:$USER /var/www/$domain/public
+      sudo chmod -R 755 /var/www/$domain
+
+      echo "
+      server {
+          listen                  443 ssl http2;
+          listen                  [::]:443 ssl http2;
+          server_name             $domain;
+          # SSL
+          ssl_certificate         /etc/letsencrypt/live/$domain/fullchain.pem;
+          ssl_certificate_key     /etc/letsencrypt/live/$domain/privkey.pem;
+          ssl_trusted_certificate /etc/letsencrypt/live/$domain/chain.pem;
+          # security
+          include                 security.conf;
+          # logging
+          access_log              /var/log/nginx/$domain.access.log;
+          error_log               /var/log/nginx/$domain.error.log warn;
+          # reverse proxy
+          location / {
+              proxy_pass http://127.0.0.1:8080;
+              include    proxy.conf;
+          }
+          # additional config
+          include general.conf;
+      }
+      # HTTP redirect
+      server {
+          listen      80;
+          listen      [::]:80;
+          server_name $domain;
+          include     letsencrypt.conf;
+          location / {
+              return 301 https://$domain\$request_uri;
+          }
+      }
+      " | sudo tee /etc/nginx/sites-available/$domain.conf
+    done
 
     echo "
     user                 www-data;
@@ -101,40 +139,6 @@ if [ "$EUID" -ne 0 ] ;then
         include              /etc/nginx/sites-enabled/*;
     }
     " | sudo tee /etc/nginx/nginx.conf
-
-    echo "
-    server {
-        listen                  443 ssl http2;
-        listen                  [::]:443 ssl http2;
-        server_name             $servername;
-        # SSL
-        ssl_certificate         /etc/letsencrypt/live/$servername/fullchain.pem;
-        ssl_certificate_key     /etc/letsencrypt/live/$servername/privkey.pem;
-        ssl_trusted_certificate /etc/letsencrypt/live/$servername/chain.pem;
-        # security
-        include                 security.conf;
-        # logging
-        access_log              /var/log/nginx/$servername.access.log;
-        error_log               /var/log/nginx/$servername.error.log warn;
-        # reverse proxy
-        location / {
-            proxy_pass http://127.0.0.1:8080;
-            include    proxy.conf;
-        }
-        # additional config
-        include general.conf;
-    }
-    # HTTP redirect
-    server {
-        listen      80;
-        listen      [::]:80;
-        server_name $servername;
-        include     letsencrypt.conf;
-        location / {
-            return 301 https://$servername\$request_uri;
-        }
-    }
-    " | sudo tee /etc/nginx/sites-available/$servername.conf
 
     echo "
     # ACME-challenge
@@ -194,24 +198,31 @@ if [ "$EUID" -ne 0 ] ;then
     proxy_read_timeout                 60s;
     " | sudo tee /etc/nginx/proxy.conf
 
-    sudo ln -s /etc/nginx/sites-available/$servername.conf /etc/nginx/sites-enabled/
     sudo openssl dhparam -out /etc/nginx/dhparam.pem 4096
+    for domain in $domains
+    do
+      sudo ln -s /etc/nginx/sites-available/$domain.conf /etc/nginx/sites-enabled/
 
-    #Comment out SSL related directives in the configuration:
-    sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/$servername.conf
-    sudo nginx -t
-    sudo systemctl restart nginx
-    #install certbot and create cert
-    sudo apt install -qq -y certbot
-    sudo mkdir -p /var/www/_letsencrypt
-    sudo chown www-data /var/www/_letsencrypt
-    ##old command tested with 2048 ssl_dhparam
-    #sudo certbot certonly --webroot -d $servername --email info@$servername -w /var/www/_letsencrypt -n --agree-tos --force-renewal
-    ##This command needs testing after 2 days letsencrypt wait time:
-    sudo certbot certonly --webroot -d $servername --email info@$servername -w /var/www/_letsencrypt -n --agree-tos --force-renewal --redirect --uir --hsts --staple-ocsp --must-staple --rsa-key-size 4096
+      #Comment out SSL related directives in the configuration:
+      sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/$domain.conf
+      sudo nginx -t
+      sudo systemctl restart nginx
 
-    #Uncomment SSL related directives in the configuration:
-    sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/$servername.conf
+      #install certbot and create cert
+      sudo apt install -qq -y certbot
+      sudo mkdir -p /var/www/_letsencrypt
+      sudo chown www-data /var/www/_letsencrypt
+
+      #certbot letsencrypt:
+      sudo certbot certonly --webroot -d $domain --email info@example.com -w /var/www/_letsencrypt -n --agree-tos --force-renewal --redirect --uir --hsts --staple-ocsp --must-staple --rsa-key-size 4096
+
+      #Uncomment SSL related directives in the configuration:
+      sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/$domain.conf
+    done
+
+    #TODO: create possibility to add domains with normal conf no reverse proxy
+    #TODO: and input for reverseproxy ip:port
+
     sudo nginx -t && sudo systemctl reload nginx
     # Configure Certbot to reload NGINX when it successfully renews certificates:
     echo -e '#!/bin/bash\nnginx -t && systemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/post/nginx-reload.sh
@@ -274,7 +285,6 @@ if [ "$EUID" -ne 0 ] ;then
     sudo apt -qq -y install postgresql-11
     sudo apt -qq -y install postgresql-client
     sudo su - postgres bash -c "psql -c \"CREATE USER $normaluser WITH PASSWORD '$normaluserpw';\""
-    sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
     sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$normaluser\" OWNER $normaluser;'"
   fi
 
@@ -298,28 +308,50 @@ if [ "$EUID" -ne 0 ] ;then
     sudo mysql --database="mysql" --execute="UPDATE user SET plugin='' WHERE user ='root';FLUSH PRIVILEGES;"
     sudo systemctl restart mariadb
     sudo mysql --user="root" --password="$rootpw" --execute="GRANT ALL PRIVILEGES ON *.* TO '$normaluser'@'localhost' IDENTIFIED BY '$normaluserpw';"
-    sudo mysql --user="root" --password="$rootpw" --execute='CREATE DATABASE IF NOT EXISTS `go_rest_api` CHARACTER SET utf8 COLLATE utf8_general_ci'
+
   fi
 
   ## Install and configure go-rest-api #########################################
   echo -n "${green}Install and configure go-rest-api (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
-    read -p "${green}servername for go-rest-api (api.example.com): $normal" servername
+    read -p "${green}Enter webroot directory (/var/www): $normal" webroot
+    read -p "${green}domain for go-rest-api (api.example.com): $normal" domain
+
     mkdir -p $HOME/go/src/go-rest-api #mkdir if not exists
     cd $HOME/go/src/go-rest-api
+
+    sudo mkdir -p $webroot/$domain
+    sudo chown -R $normaluser $webroot/$domain
+
     git clone https://github.com/gabrielix29/go-rest-api $HOME/go/src/go-rest-api
-    sudo mkdir -p /var/www/$servername
-    sudo chown -R $normaluser /var/www/$servername
+
     #make api build in /var/www/go-rest-api or just build it there via golang editor
-    go build -o /var/www/$servername/go-rest-api /home/master/go/src/go-rest-api
-    #todo insert default values into db
-    #TODO input choose db mysql/postgres
-    #then create db here (remove above) and tables and insert default values via mysql and psql
-    #todo no hardcoded values only vars
-    #change config.json values
+    go build -o $webroot/${domain}/go-rest-api $HOME/go/src/go-rest-api
+
+    #input choose db mysql/postgres then create db here
+    PS3="${lightaqua}Which database are you using?$normal"
+    options=("1 mysql" "2 postgresql")
+    select opt in "${options[@]}"
+    do
+        case $opt in
+            "1 mysql")
+                echo "you chose choice 1 mysql"
+                read -s -p "${green}Enter password for $normaluser: $normal" normaluserpw
+                echo
+                sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `go_rest_api` CHARACTER SET utf8 COLLATE utf8_general_ci'
+                ;;
+            "2 postgres")
+                echo "you chose choice 2 postgresql"
+                sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
+                ;;
+            *) echo "invalid option $REPLY";;
+        esac
+    done
+    #todo change config.json values
+
   fi
-  echo "${green}Done...$normal"
+  echo "${green}Done... now u can serve the api$normal"
 else
   echo "${red}Please DONT run script as root. Use normal user!$normal"
 fi
