@@ -1,4 +1,4 @@
-# install_go-rest-api
+# install_go_api
 Script to install following on a debian10 server:
 - sudo
 - nginx + certbot
