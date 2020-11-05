@@ -55,9 +55,12 @@ if [ "$EUID" -ne 0 ] ;then
 
     for domain in $domains
     do
+      ##TODO ask for reverseproxy location ip:port
       mkdir -p $webroot/${domain}/public
       sudo chown -R $USER:$USER /var/www/$domain/public
       sudo chmod -R 755 /var/www/$domain
+
+      read -p "${green}Enter proxy_pass for $domain (http://127.0.0.1:8080): $normal" proxy_pass
 
       echo "
       server {
@@ -75,7 +78,7 @@ if [ "$EUID" -ne 0 ] ;then
           error_log               /var/log/nginx/$domain.error.log warn;
           # reverse proxy
           location / {
-              proxy_pass http://127.0.0.1:8080;
+              proxy_pass $proxy_pass;
               include    proxy.conf;
           }
           # additional config
