@@ -29,3 +29,4 @@ still unstable dev version!
 - GOPATH in .profile doesnt work anymore
 - change api config.json
 - testing, fixing, errorhandling
+- make it not necessary to disconnect and restart script after sudo and golang installation maybe with source command
