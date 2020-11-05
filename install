@@ -146,7 +146,6 @@ proxy_connect_timeout              60s;
 proxy_send_timeout                 60s;
 proxy_read_timeout                 60s;" | sudo tee /etc/nginx/proxy.conf
 
-
     read -p "${green}Please enter domains separated by space. (example.com api.example.com blog.example.com): $normal" domains
 
     for domain in $domains
@@ -160,8 +159,7 @@ server {
     location / {
         return 301 https://$domain\$request_uri;
     }
-}
-      " | sudo tee /etc/nginx/sites-available/$domain.conf
+}" | sudo tee /etc/nginx/sites-available/$domain.conf
       sudo ln -s /etc/nginx/sites-available/$domain.conf /etc/nginx/sites-enabled/
       sudo mkdir -p $webroot/${domain}/public
       sudo chown -R $USER:$USER $webroot/${domain}/public
@@ -169,13 +167,6 @@ server {
     done
 
     sudo openssl dhparam -out /etc/nginx/dhparam.pem 4096
-
-#    for domain in $domains
-#    do
-      #Comment out SSL related directives in the configuration:
-      #sudo sed -i 's/.*443/#&/' /etc/nginx/sites-available/$domain.conf
-      #sudo sed -i 's/.*ssl_/#&/' /etc/nginx/sites-available/$domain.conf
-#    done
 
     sudo nginx -t
     sudo systemctl restart nginx
@@ -215,12 +206,6 @@ server {
     # additional config
     include general.conf;
 }" | sudo tee -a /etc/nginx/sites-available/$domain.conf
-
-
-      #Uncomment SSL related directives in the configuration:
-      #sudo sed -i '/^#.*443/s/^#//' /etc/nginx/sites-available/$domain.conf
-      #sudo sed -i '/^#.*ssl_/s/^#//' /etc/nginx/sites-available/$domain.conf
-      #sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/$domain.conf
     done
 
     sudo nginx -t && sudo systemctl restart nginx
@@ -305,10 +290,10 @@ server {
       Remove [Y/n]:  Y
       Reload [Y/n]:  Y$normal"
     sudo mysql_secure_installation
+    sudo mysql --user="root" --password="$rootpw" --execute="GRANT ALL PRIVILEGES ON *.* TO '$normaluser'@'localhost' IDENTIFIED BY '$normaluserpw';"
+    sudo systemctl restart mariadb
     sudo mysql --database="mysql" --execute="UPDATE user SET plugin='' WHERE user ='root';FLUSH PRIVILEGES;"
     sudo systemctl restart mariadb
-    sudo mysql --user="root" --password="$rootpw" --execute="GRANT ALL PRIVILEGES ON *.* TO '$normaluser'@'localhost' IDENTIFIED BY '$normaluserpw';"
-
   fi
 
   ## Install and configure go api #########################################
@@ -318,6 +303,8 @@ server {
     read -p "${green}Enter webroot directory (/var/www): $normal" webroot
     read -p "${green}domain for the api (api.example.com): $normal" domain
     read -p "${green}github PATH of the API u want to install (https://github.com/gabrielix29/go-rest-api): $normal" gitpath
+    read -s -p "${green}Enter password for $normaluser: $normal" normaluserpw
+    echo
     project_name=${gitpath//*\/} #after last / in github path is new var project_name
     db_name=${project_name//-/_} #replace("-","_")
     mkdir -p $HOME/go/src/$project_name
@@ -328,23 +315,24 @@ server {
     git clone $gitpath $HOME/go/src/$project_name
     #make api build in $webroot/$project_name or just build it there via golang editor or cmd
     go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
-
+    driver="mysql"
+    port="3306"
     #input choose db mysql/postgres then create db here
     PS3="${lightaqua}Which database are you using?$normal"
-    options=("mysql" "postgresql")
+    options=("mysql" "postgres")
     select opt in "${options[@]}"
     do
         case $opt in
             "mysql")
                 echo "you chose choice 1 mysql"
-                read -s -p "${green}Enter password for $normaluser: $normal" normaluserpw
-                echo
                 sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `'$db_name'` CHARACTER SET utf8 COLLATE utf8_general_ci' #needs testing!
                 #todo config.json to mysql values
                 break
                 ;;
-            "postgresql")
-                echo "you chose choice 2 postgresql"
+            "postgres")
+                echo "you chose choice 2 postgres"
+                driver="postgres"
+                port="5432"
                 sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$db_name\" OWNER $normaluser;'"
                 #todo config.json to postgresql values
                 break
@@ -355,9 +343,35 @@ server {
         esac
     done
     #todo change config.json values
-    #todo create systemd /etc/systemd/system/api_name.service file
+    read -p "${green}api http server host (127.0.0.1): $normal" host
+    read -p "${green}api http server port (8081): $normal" httpport
+
+    echo "{
+  \"database\": {
+    \"driver\": \"$driver\",
+    \"host\": \"127.0.0.1\",
+    \"name\": \"$db_name\",
+    \"password\": \"$normaluserpw\",
+    \"port\": \"$port\",
+    \"username\": \"$normaluser\"
+  },
+  \"logger\": {
+    \"debug\": true
+  },
+  \"server\": {
+    \"host\": \"$host\",
+    \"port\": \"$httpport\"
+  }
+}
+" | sudo tee $webroot/${domain}/config.json
+
     #todo exec api_name migrate command
+    .$webroot/${domain}/$project_name migrate
+
+    #todo create systemd /etc/systemd/system/api_name.service file
+
     #todo systemctl start servicename  --> executes the serve command in api_name.servicefile
+
   fi
   echo "${green}Done...$normal"
 else
