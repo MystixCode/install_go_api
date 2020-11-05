@@ -26,7 +26,6 @@ still unstable dev version!
 
 ### TODO
 - possibility to choose between reverse proxy config or normal server block foreach domain
-- input for dynamic reverseproxy ip:port foreach domain with reverse proxy
 - GOPATH in .profile doesnt work anymore
 - change api config.json
 - testing, fixing, errorhandling
