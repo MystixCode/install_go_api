@@ -6,9 +6,9 @@ Script to install following on a debian10 server:
 - fail2ban
 - git
 - golang
-- go api ([go-rest-api](https://github.com/gabrielix29/go-rest-api)/[nyx](https://github.com/authenter/nyx))
 - postgresql
 - mariadb
+- go api ([go-rest-api](https://github.com/gabrielix29/go-rest-api)/[nyx](https://github.com/authenter/nyx))
 
 still unstable dev version!
 
