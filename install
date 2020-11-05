@@ -56,7 +56,7 @@ if [ "$EUID" -ne 0 ] ;then
     for domain in $domains
     do
       ##TODO ask for reverseproxy location ip:port
-      mkdir -p $webroot/${domain}/public
+      sudo mkdir -p $webroot/${domain}/public
       sudo chown -R $USER:$USER $webroot/${domain}/public
       sudo chmod -R 755 $webroot/$domain
 
@@ -207,6 +207,7 @@ if [ "$EUID" -ne 0 ] ;then
       sudo ln -s /etc/nginx/sites-available/$domain.conf /etc/nginx/sites-enabled/
       #Comment out SSL related directives in the configuration:
       sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/$domain.conf
+
       sudo nginx -t
       sudo systemctl restart nginx
       #install certbot and create cert
@@ -214,7 +215,7 @@ if [ "$EUID" -ne 0 ] ;then
       sudo mkdir -p $webroot/_letsencrypt
       sudo chown www-data $webroot/_letsencrypt
       #certbot letsencrypt:
-      sudo certbot certonly --webroot -d $domain --email info@example.com -w $webroot/_letsencrypt -n --agree-tos --force-renewal --redirect --uir --hsts --staple-ocsp --must-staple --rsa-key-size 4096
+      sudo certbot certonly --webroot -d $domain -w $webroot/_letsencrypt -n --agree-tos --force-renewal --redirect --uir --hsts --staple-ocsp --must-staple --rsa-key-size 4096
       #Uncomment SSL related directives in the configuration:
       sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/$domain.conf
     done
@@ -314,7 +315,7 @@ if [ "$EUID" -ne 0 ] ;then
     read -p "${green}domain for the api (api.example.com): $normal" domain
     read -p "${green}github PATH of the API u want to install (https://github.com/gabrielix29/go-rest-api): $normal" gitpath
     project_name=${gitpath//*\/} #after last / in github path is new var project_name
-    db_name = ${project_name//-/_} #replace("-","_")
+    db_name=${project_name//-/_} #replace("-","_")
     mkdir -p $HOME/go/src/$project_name
     cd $HOME/go/src/$project_name
     sudo mkdir -p $webroot/$domain
@@ -336,13 +337,17 @@ if [ "$EUID" -ne 0 ] ;then
                 echo
                 sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `'$db_name'` CHARACTER SET utf8 COLLATE utf8_general_ci' #needs testing!
                 #todo config.json to mysql values
+                break
                 ;;
             "postgresql")
                 echo "you chose choice 2 postgresql"
                 sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$db_name\" OWNER $normaluser;'"
                 #todo config.json to postgresql values
+                break
                 ;;
-            *) echo "invalid option $REPLY";;
+            *)
+                echo "invalid option $REPLY"
+                ;;
         esac
     done
     #todo change config.json values
