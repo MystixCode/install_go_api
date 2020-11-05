@@ -9,7 +9,7 @@ lightaqua=`echo -en "\e[96m"`
 orange=`echo -en "\e[33m"`
 purple=`echo -en "\e[35m"`
 clear
-echo "${bold}${underline}${purple}Debian 10 - go-rest-api installation and configuration script$normal"
+echo "${bold}${underline}${purple}Debian 10 - Server with go api installation and configuration script$normal"
 
 ## if not root check ###########################################################
 if [ "$EUID" -ne 0 ] ;then
@@ -311,47 +311,51 @@ if [ "$EUID" -ne 0 ] ;then
 
   fi
 
-  ## Install and configure go-rest-api #########################################
-  echo -n "${green}Install and configure go-rest-api (y/n)? $normal"
+  ## Install and configure go api #########################################
+  echo -n "${green}Install and configure a go api (y/n)? $normal"
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
     read -p "${green}Enter webroot directory (/var/www): $normal" webroot
-    read -p "${green}domain for go-rest-api (api.example.com): $normal" domain
-
-    mkdir -p $HOME/go/src/go-rest-api #mkdir if not exists
-    cd $HOME/go/src/go-rest-api
-
+    read -p "${green}domain for the api (api.example.com): $normal" domain
+    read -p "${green}github PATH of the API u want to install (https://github.com/gabrielix29/go-rest-api): $normal" gitpath
+    project_name=${gitpath//*\/} #after last / in github path is new var project_name
+    db_name = ${project_name//-/_} #replace("-","_")
+    mkdir -p $HOME/go/src/$project_name
+    cd $HOME/go/src/$project_name
     sudo mkdir -p $webroot/$domain
     sudo chown -R $normaluser $webroot/$domain
-
-    git clone https://github.com/gabrielix29/go-rest-api $HOME/go/src/go-rest-api
-
-    #make api build in /var/www/go-rest-api or just build it there via golang editor
-    go build -o $webroot/${domain}/go-rest-api $HOME/go/src/go-rest-api
+    #get project from github
+    git clone $gitpath $HOME/go/src/$project_name
+    #make api build in /var/www/$project_name or just build it there via golang editor or cmd
+    go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
 
     #input choose db mysql/postgres then create db here
     PS3="${lightaqua}Which database are you using?$normal"
-    options=("1 mysql" "2 postgresql")
+    options=("mysql" "postgresql")
     select opt in "${options[@]}"
     do
         case $opt in
-            "1 mysql")
+            "mysql")
                 echo "you chose choice 1 mysql"
                 read -s -p "${green}Enter password for $normaluser: $normal" normaluserpw
                 echo
-                sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `go_rest_api` CHARACTER SET utf8 COLLATE utf8_general_ci'
+                sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `'$db_name'` CHARACTER SET utf8 COLLATE utf8_general_ci' #needs testing!
+                #todo config.json to mysql values
                 ;;
-            "2 postgres")
+            "postgresql")
                 echo "you chose choice 2 postgresql"
-                sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"go_rest_api\" OWNER $normaluser;'"
+                sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$db_name\" OWNER $normaluser;'"
+                #todo config.json to postgresql values
                 ;;
             *) echo "invalid option $REPLY";;
         esac
     done
     #todo change config.json values
-
+    #todo create systemd /etc/systemd/system/api_name.service file
+    #todo exec api_name migrate command
+    #todo systemctl start servicename  --> executes the serve command in api_name.servicefile
   fi
-  echo "${green}Done... now u can serve the api$normal"
+  echo "${green}Done...$normal"
 else
   echo "${red}Please DONT run script as root. Use normal user!$normal"
 fi
