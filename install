@@ -50,7 +50,6 @@ if [ "$EUID" -ne 0 ] ;then
   if [ "$answer" != "${answer#[Yy]}" ] ;then
     sudo apt -qq -y install nginx
     read -p "${green}Enter webroot directory (/var/www): $normal" webroot
-    #TODO: create possibility to add domains with normal conf no reverse proxy
 
     echo "user                 www-data;
 pid                  /run/nginx.pid;
@@ -183,6 +182,7 @@ server {
 
     for domain in $domains
     do
+      #TODO: create possibility to add domains with normal conf no reverse proxy
       read -p "${green}Enter proxy_pass for $domain (http://127.0.0.1:8080): $normal" proxy_pass
       echo "# HTTPS SERVER
 server {
@@ -232,6 +232,7 @@ server {
     sudo apt -qq -y install fail2ban
     sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local #because jail.conf gets overriden by updates
     sudo sed -i '/\[nginx-http-auth\]/a enabled = true' /etc/fail2ban/jail.local
+    sudo systemctl start fail2ban
     sudo systemctl restart fail2ban
     sudo fail2ban-client status
   fi
@@ -361,13 +362,12 @@ server {
     \"host\": \"$host\",
     \"port\": \"$httpport\"
   }
-}
-" | sudo tee $HOME/go/src/${project_name}/config.json #sudo tee $webroot/${domain}/config.json
+}" | sudo tee $HOME/go/src/${project_name}/config.json #sudo tee $webroot/${domain}/config.json
 
   #make api build in $webroot/$project_name or just build it there via golang editor or cmd
   go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
 
-  #exec api_name migrate command
+  #exec /var/www/api_name migrate
   $webroot/${domain}/$project_name migrate
 
     #todo create systemd /etc/systemd/system/api_name.service file
