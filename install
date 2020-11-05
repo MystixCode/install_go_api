@@ -49,16 +49,16 @@ if [ "$EUID" -ne 0 ] ;then
   read answer
   if [ "$answer" != "${answer#[Yy]}" ] ;then
     sudo apt -qq -y install nginx
-
     read -p "${green}Enter webroot directory (/var/www): $normal" webroot
+    #TODO: create possibility to add domains with normal conf no reverse proxy
     read -p "${green}Please enter domains separated by space. (example.com api.example.com blog.example.com): $normal" domains
 
     for domain in $domains
     do
       ##TODO ask for reverseproxy location ip:port
       mkdir -p $webroot/${domain}/public
-      sudo chown -R $USER:$USER /var/www/$domain/public
-      sudo chmod -R 755 /var/www/$domain
+      sudo chown -R $USER:$USER $webroot/${domain}/public
+      sudo chmod -R 755 $webroot/$domain
 
       read -p "${green}Enter proxy_pass for $domain (http://127.0.0.1:8080): $normal" proxy_pass
 
@@ -146,7 +146,7 @@ if [ "$EUID" -ne 0 ] ;then
     echo "
     # ACME-challenge
     location ^~ /.well-known/acme-challenge/ {
-        root /var/www/_letsencrypt;
+        root $webroot/_letsencrypt;
     }
     " | sudo tee /etc/nginx/letsencrypt.conf
 
@@ -205,27 +205,19 @@ if [ "$EUID" -ne 0 ] ;then
     for domain in $domains
     do
       sudo ln -s /etc/nginx/sites-available/$domain.conf /etc/nginx/sites-enabled/
-
       #Comment out SSL related directives in the configuration:
       sudo sed -i -r 's/(listen .*443)/\1;#/g; s/(ssl_(certificate|certificate_key|trusted_certificate) )/#;#\1/g' /etc/nginx/sites-available/$domain.conf
       sudo nginx -t
       sudo systemctl restart nginx
-
       #install certbot and create cert
       sudo apt install -qq -y certbot
-      sudo mkdir -p /var/www/_letsencrypt
-      sudo chown www-data /var/www/_letsencrypt
-
+      sudo mkdir -p $webroot/_letsencrypt
+      sudo chown www-data $webroot/_letsencrypt
       #certbot letsencrypt:
-      sudo certbot certonly --webroot -d $domain --email info@example.com -w /var/www/_letsencrypt -n --agree-tos --force-renewal --redirect --uir --hsts --staple-ocsp --must-staple --rsa-key-size 4096
-
+      sudo certbot certonly --webroot -d $domain --email info@example.com -w $webroot/_letsencrypt -n --agree-tos --force-renewal --redirect --uir --hsts --staple-ocsp --must-staple --rsa-key-size 4096
       #Uncomment SSL related directives in the configuration:
       sudo sed -i -r 's/#?;#//g' /etc/nginx/sites-available/$domain.conf
     done
-
-    #TODO: create possibility to add domains with normal conf no reverse proxy
-    #TODO: and input for reverseproxy ip:port
-
     sudo nginx -t && sudo systemctl reload nginx
     # Configure Certbot to reload NGINX when it successfully renews certificates:
     echo -e '#!/bin/bash\nnginx -t && systemctl reload nginx' | sudo tee /etc/letsencrypt/renewal-hooks/post/nginx-reload.sh
@@ -329,7 +321,7 @@ if [ "$EUID" -ne 0 ] ;then
     sudo chown -R $normaluser $webroot/$domain
     #get project from github
     git clone $gitpath $HOME/go/src/$project_name
-    #make api build in /var/www/$project_name or just build it there via golang editor or cmd
+    #make api build in $webroot/$project_name or just build it there via golang editor or cmd
     go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
 
     #input choose db mysql/postgres then create db here
