@@ -166,7 +166,6 @@ server {
     done
 
     sudo openssl dhparam -out /etc/nginx/dhparam.pem 4096
-
     sudo nginx -t
     sudo systemctl restart nginx
     sudo apt install -qq -y certbot
@@ -312,12 +311,9 @@ server {
     cd $HOME/go/src/$project_name
     sudo mkdir -p $webroot/$domain
     sudo chown -R $normaluser $webroot/$domain
-    #get project from github
     git clone $gitpath $HOME/go/src/$project_name
-
     driver="mysql"
     port="3306"
-    #input choose db mysql/postgres then create db here
     PS3="${lightaqua}Which database are you using?$normal"
     options=("mysql" "postgres")
     select opt in "${options[@]}"
@@ -325,8 +321,7 @@ server {
         case $opt in
             "mysql")
                 echo "you chose choice 1 mysql"
-                sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `'$db_name'` CHARACTER SET utf8 COLLATE utf8_general_ci' #needs testing!
-                #todo config.json to mysql values
+                sudo mysql --user="$normaluser" --password="$normaluserpw" --execute='CREATE DATABASE IF NOT EXISTS `'$db_name'` CHARACTER SET utf8 COLLATE utf8_general_ci'
                 break
                 ;;
             "postgres")
@@ -334,7 +329,6 @@ server {
                 driver="postgres"
                 port="5432"
                 sudo su - postgres bash -c "psql -c 'CREATE DATABASE \"$db_name\" OWNER $normaluser;'"
-                #todo config.json to postgresql values
                 break
                 ;;
             *)
@@ -342,7 +336,6 @@ server {
                 ;;
         esac
     done
-    #todo change config.json values
     read -p "${green}api http server host (127.0.0.1): $normal" host
     read -p "${green}api http server port (8081): $normal" httpport
 
@@ -364,16 +357,10 @@ server {
   }
 }" | sudo tee $HOME/go/src/${project_name}/config.json #sudo tee $webroot/${domain}/config.json
 
-  #make api build in $webroot/$project_name or just build it there via golang editor or cmd
-  go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
-
-  #exec /var/www/api_name migrate
-  $webroot/${domain}/$project_name migrate
-
+    go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
+    $webroot/${domain}/$project_name migrate #exec /var/www/api_name migrate
     #todo create systemd /etc/systemd/system/api_name.service file
-
     #todo systemctl start servicename  --> executes the serve command in api_name.servicefile
-
   fi
   echo "${green}Done...$normal"
 else
