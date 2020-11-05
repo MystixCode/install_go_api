@@ -313,8 +313,7 @@ server {
     sudo chown -R $normaluser $webroot/$domain
     #get project from github
     git clone $gitpath $HOME/go/src/$project_name
-    #make api build in $webroot/$project_name or just build it there via golang editor or cmd
-    go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
+
     driver="mysql"
     port="3306"
     #input choose db mysql/postgres then create db here
@@ -363,10 +362,13 @@ server {
     \"port\": \"$httpport\"
   }
 }
-" | sudo tee $webroot/${domain}/config.json
+" | sudo tee $HOME/go/src/${project_name}/config.json #sudo tee $webroot/${domain}/config.json
 
-    #todo exec api_name migrate command
-    .$webroot/${domain}/$project_name migrate
+  #make api build in $webroot/$project_name or just build it there via golang editor or cmd
+  go build -o $webroot/${domain}/$project_name $HOME/go/src/$project_name
+
+  #exec api_name migrate command
+  $webroot/${domain}/$project_name migrate
 
     #todo create systemd /etc/systemd/system/api_name.service file
 
