@@ -25,6 +25,7 @@ still unstable dev version!
 
 
 ### TODO
+- install mutiple go api
 - GOPATH in .profile doesnt work anymore
 - testing, fixing, errorhandling
 - make it not necessary to disconnect and restart script after sudo and golang installation maybe with source command
