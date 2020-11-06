@@ -25,7 +25,6 @@ still unstable dev version!
 
 
 ### TODO
-- possibility to choose between reverse proxy config or normal server block foreach domain
 - GOPATH in .profile doesnt work anymore
 - testing, fixing, errorhandling
 - make it not necessary to disconnect and restart script after sudo and golang installation maybe with source command
